@@ -11,12 +11,8 @@ from generate_profiles import *
 
 
 phis = [0.0, 0.25, 0.5, 0.75, 1.0]
-# phis = [0.0]
-# ns = [2, 3, 4, 5, 8, 10]
 ns = [4, 5]
-
 ms = list(range(5, 5*3 + 1, 1))
-# ms = list(range(21, 25 + 1, 1))
 props = ['ef', 'ef1', 'efx']
 num_instances = 100
 loc = 'ef_rm_experiments'
@@ -644,34 +640,6 @@ def rqsd_experiments():
                     pickle.dump(instances_rm, fo)
 
 
-def plot_by_phi():
-    for n in ns:
-        title = f'mallows_n={n}'
-        lms = len(ms)
-        lps = len(phis)
-        H = np.zeros((lps, lms))
-        for i in range(lps):
-            phi = phis[i]
-            for j in range(lms):
-                m = ms[j]
-                with open(f'mallows_n={n},m={m},phi={phi}.pickle', 'rb') as f:
-                    r = pickle.load(f)
-                r = np.sum(r)
-                H[i, j] = r
-        print('n =', n, '\n', H)
-
-        fig = plt.figure()
-        sns.heatmap(H, cmap='coolwarm')
-        plt.title(f'# agents = {n}')
-        plt.xlabel('# items')
-        plt.ylabel(r'$\phi$ Mallows model')
-        plt.xticks([j+0.5 for j in range(lms)], ms)
-        plt.yticks([i+0.5 for i in range(lps)], np.round(phis,1), rotation=0)
-        for im in fig.gca().get_images():
-            im.clim(vmin=np.min(H), vmax=100)
-        plt.savefig(title+'.png')
-
-
 def plot_by_ef():
     colors = ['r', 'g', 'b', 'k']
     markers = ['o','x','s','^']
@@ -725,23 +693,22 @@ def is_ef_rm():
 
 
 def main():
-    """
+    # """
     # generate instances
     for n in ns:
         for m in ms:
             for phi in phis:
                 instances = generate_instances(n, m, phi, num_instances)
-    """
     # """
-    # run experiments
-    # efx_rm_experiments()
-    # ef1_rm_experiments()
+    # """
+    run experiments
+    efx_rm_experiments()
+    ef1_rm_experiments()
     ef_rm_experiments()
     # """
-    """
+    # """
     plot_by_ef()
-    """
-    # is_ef_rm()
+    # """
 
 
 if __name__ == '__main__':
