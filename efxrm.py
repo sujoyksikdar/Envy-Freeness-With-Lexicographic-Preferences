@@ -4,6 +4,7 @@ import pickle
 import pulp
 import sys
 import matplotlib
+from multiprocessing import Pool
 from matplotlib import pyplot as plt
 import seaborn as sns
 
@@ -11,10 +12,10 @@ from generate_profiles import *
 
 
 phis = [0.0, 0.25, 0.5, 0.75, 1.0]
-ns = [4, 5]
+ns = [5]
 ms = list(range(5, 5*3 + 1, 1))
-props = ['ef', 'ef1', 'efx']
 num_instances = 100
+props = ['ef', 'ef1', 'efx']
 loc = 'ef_rm_experiments'
 
 lns = len(ns)
@@ -83,6 +84,7 @@ def load_instances(n, m, phi, num_instances):
 
 
 def rmsig(ranking):
+    (n, m) = np.shape(ranking)
     sig = dict()
     for j in range(m):
         sig[j] = np.where(ranking[:, j] == np.min(ranking[:, j]))[0].tolist()
@@ -212,12 +214,10 @@ def exists_efx_rm(ranking):
     exists: True/False
     """
     (n, m) = np.shape(ranking)
+    prediag(ranking, 'EFX')
 
     # create the rank maximal allocation signature
-    s = dict()
-    for j in range(m):
-        s[j] = np.where(ranking[:, j] == np.min(ranking[:, j]))[0].tolist()
-    debug('s: ', s)
+    s = rmsig(ranking)
 
     """
     ILP variables
@@ -265,9 +265,15 @@ def exists_efx_rm(ranking):
     for i in range(n):
         for j in range(m):
             model += r[i] <= ranking[i,j]*x[(i,j)] + (m+1)*(1-x[(i,j)])
-            model += c[(i,j)] >= (ranking[i,j]*x[(i,j)] + m*(1-x[(i,j)]) - r[i])/m
+
+    for i in range(n):
+        for j in range(m):
+            model += r[i] >= ranking[i,j]*c[(i,j)] + ranking[i,j]*x[(i,j)] - ranking[i,j]
+            model += c[(i,j)] >= 1-x[(i,j)]
+            model += c[(i,j)] >= (r[i] - ranking[i,j]*x[(i,j)])/m
             model += c[(i,j)] <= (m + ranking[i,j]*x[(i,j)] + m*(1-x[(i,j)]) - r[i])/m
-        model += pulp.lpSum([c[(i,j)] for j in range(m)]) == m
+        model += pulp.lpSum([c[(i,j)] for j in range(m)]) == m - (pulp.lpSum([x[(i,j)] for j in range(m)]) - 1)
+
         # set r[i]=m+1 if agent i is not assigned any item
         model += e[i] >= 1 - pulp.lpSum([x[(i,j)] for j in range(m)])
         model += e[i] <= pulp.lpSum([(1-x[(i,j)]) for j in range(m)])/m
@@ -292,33 +298,9 @@ def exists_efx_rm(ranking):
     status = model.status
     status = (pulp.LpStatusOptimal == model.status)
 
-    debug(f'status {status}, raw status {model.status}')
-
-    if status or DEBUG:
-        A = np.zeros((n, m))
-        C = np.zeros((n, m))
-        Y = np.zeros((n, n))
-        for i in range(n):
-            for j in range(m):
-                # A[i, j] = int(np.round(pulp.value(xvars[(i, j)])))
-                A[i, j] = pulp.value(x[(i, j)])
-                C[i, j] = pulp.value(c[(i, j)])
-            for k in range(n):
-                if i != k:
-                    Y[i, k] = pulp.value(y[(i, k)])
-        debug(f'best ranked items {[pulp.value(r[i]) for i in range(n)]}')
-        debug('allocation\n' , A)
-        debug('cvars\n' , C)
-        debug('envy\n', Y)
-        debug('ranking\n', ranking)
-        debug('emptiness ', [pulp.value(e[i]) for i in range(n)])
-        debug('times allocated ', [np.sum([pulp.value(x[(i,j)]) for i in s[j]]) for j in range(m)])
-        debug('times maximal ', [np.sum([1 for i in s[j]]) for j in range(m)])
-        # sanity checks
-        for j in range(m):
-            assert(np.sum([A[i, j] for i in s[j]]) == 1)
-        if status:
-            return True
+    postdiag(ranking, status, model, x, r, c, e, y, d)
+    if status:
+        return True
     return False
 
 
@@ -335,12 +317,10 @@ def exists_ef1_rm(ranking):
     exists: True/False
     """
     (n, m) = np.shape(ranking)
+    prediag(ranking, 'EF1')
 
     # create the rank maximal allocation signature
-    s = dict()
-    for j in range(m):
-        s[j] = np.where(ranking[:, j] == np.min(ranking[:, j]))[0].tolist()
-    debug('s: ', s)
+    s = rmsig(ranking)
 
     """
     ILP variables
@@ -388,9 +368,15 @@ def exists_ef1_rm(ranking):
     for i in range(n):
         for j in range(m):
             model += r[i] <= ranking[i,j]*x[(i,j)] + (m+1)*(1-x[(i,j)])
-            model += c[(i,j)] >= (ranking[i,j]*x[(i,j)] + m*(1-x[(i,j)]) - r[i])/m
+
+    for i in range(n):
+        for j in range(m):
+            model += r[i] >= ranking[i,j]*c[(i,j)] + ranking[i,j]*x[(i,j)] - ranking[i,j]
+            model += c[(i,j)] >= 1-x[(i,j)]
+            model += c[(i,j)] >= (r[i] - ranking[i,j]*x[(i,j)])/m
             model += c[(i,j)] <= (m + ranking[i,j]*x[(i,j)] + m*(1-x[(i,j)]) - r[i])/m
-        model += pulp.lpSum([c[(i,j)] for j in range(m)]) == m
+        model += pulp.lpSum([c[(i,j)] for j in range(m)]) == m - (pulp.lpSum([x[(i,j)] for j in range(m)]) - 1)
+
         # set r[i]=m+1 if agent i is not assigned any item
         model += e[i] >= 1 - pulp.lpSum([x[(i,j)] for j in range(m)])
         model += e[i] <= pulp.lpSum([(1-x[(i,j)]) for j in range(m)])/m
@@ -415,33 +401,10 @@ def exists_ef1_rm(ranking):
     status = model.status
     status = (pulp.LpStatusOptimal == model.status)
 
-    debug(f'status {status}, raw status {model.status}')
+    postdiag(ranking, status, model, x, r, c, e, y, d)
 
-    if status or DEBUG:
-        A = np.zeros((n, m))
-        C = np.zeros((n, m))
-        Y = np.zeros((n, n))
-        for i in range(n):
-            for j in range(m):
-                # A[i, j] = int(np.round(pulp.value(xvars[(i, j)])))
-                A[i, j] = pulp.value(x[(i, j)])
-                C[i, j] = pulp.value(c[(i, j)])
-            for k in range(n):
-                if i != k:
-                    Y[i, k] = pulp.value(y[(i, k)])
-        debug(f'best ranked items {[pulp.value(r[i]) for i in range(n)]}')
-        debug('allocation\n' , A)
-        debug('cvars\n' , C)
-        debug('envy\n', Y)
-        debug('ranking\n', ranking)
-        debug('emptiness ', [pulp.value(e[i]) for i in range(n)])
-        debug('times allocated ', [np.sum([pulp.value(x[(i,j)]) for i in s[j]]) for j in range(m)])
-        debug('times maximal ', [np.sum([1 for i in s[j]]) for j in range(m)])
-        # sanity checks
-        for j in range(m):
-            assert(np.sum([A[i, j] for i in s[j]]) == 1)
-        if status:
-            return True
+    if status:
+        return True
     return False
 
 
@@ -458,12 +421,10 @@ def exists_ef_rm(ranking):
     exists: True/False
     """
     (n, m) = np.shape(ranking)
+    prediag(ranking, 'EF')
 
     # create the rank maximal allocation signature
-    s = dict()
-    for j in range(m):
-        s[j] = np.where(ranking[:, j] == np.min(ranking[:, j]))[0].tolist()
-    debug('s: ', s)
+    s = rmsig(ranking)
 
     """
     ILP variables
@@ -494,7 +455,7 @@ def exists_ef_rm(ranking):
     ILP definition and objective
     """
     # define the problem
-    model = pulp.LpProblem('rm+ef1_existence', pulp.LpMaximize)
+    model = pulp.LpProblem('rm+ef_existence', pulp.LpMaximize)
 
     # set objective
     model += pulp.lpSum([r[i] for i in range(n)])
@@ -511,9 +472,15 @@ def exists_ef_rm(ranking):
     for i in range(n):
         for j in range(m):
             model += r[i] <= ranking[i,j]*x[(i,j)] + (m+1)*(1-x[(i,j)])
-            model += c[(i,j)] >= (ranking[i,j]*x[(i,j)] + m*(1-x[(i,j)]) - r[i])/m
+
+    for i in range(n):
+        for j in range(m):
+            model += r[i] >= ranking[i,j]*c[(i,j)] + ranking[i,j]*x[(i,j)] - ranking[i,j]
+            model += c[(i,j)] >= 1-x[(i,j)]
+            model += c[(i,j)] >= (r[i] - ranking[i,j]*x[(i,j)])/m
             model += c[(i,j)] <= (m + ranking[i,j]*x[(i,j)] + m*(1-x[(i,j)]) - r[i])/m
-        model += pulp.lpSum([c[(i,j)] for j in range(m)]) == m
+        model += pulp.lpSum([c[(i,j)] for j in range(m)]) == m - (pulp.lpSum([x[(i,j)] for j in range(m)]) - 1)
+
         # set r[i]=m+1 if agent i is not assigned any item
         model += e[i] >= 1 - pulp.lpSum([x[(i,j)] for j in range(m)])
         model += e[i] <= pulp.lpSum([(1-x[(i,j)]) for j in range(m)])/m
@@ -538,88 +505,79 @@ def exists_ef_rm(ranking):
     status = model.status
     status = (pulp.LpStatusOptimal == model.status)
 
-    debug(f'status {status}, raw status {model.status}')
+    postdiag(ranking, status, model, x, r, c, e, y, d)
 
-    if status or DEBUG:
-        A = np.zeros((n, m))
-        C = np.zeros((n, m))
-        Y = np.zeros((n, n))
-        for i in range(n):
-            for j in range(m):
-                # A[i, j] = int(np.round(pulp.value(xvars[(i, j)])))
-                A[i, j] = pulp.value(x[(i, j)])
-                C[i, j] = pulp.value(c[(i, j)])
-            for k in range(n):
-                if i != k:
-                    Y[i, k] = pulp.value(y[(i, k)])
-        debug(f'best ranked items {[pulp.value(r[i]) for i in range(n)]}')
-        debug('allocation\n' , A)
-        debug('cvars\n' , C)
-        debug('envy\n', Y)
-        debug('ranking\n', ranking)
-        debug('emptiness ', [pulp.value(e[i]) for i in range(n)])
-        debug('times allocated ', [np.sum([pulp.value(x[(i,j)]) for i in s[j]]) for j in range(m)])
-        debug('times maximal ', [np.sum([1 for i in s[j]]) for j in range(m)])
-        # sanity checks
-        for j in range(m):
-            assert(np.sum([A[i, j] for i in s[j]]) == 1)
-        if status:
-            return True
+    if status:
+        return True
     return False
 
 
-def efx_rm_experiments():
-    for phi in phis:
-        for n in ns:
-            for m in ms:
-                title = f'efx_rm_mallows_n={n},m={m},phi={phi}'
-                print(f'working on {title}')
-                instances = load_instances(n, m, phi, num_instances)
-                instances_exists = np.zeros(num_instances)
-                for i in range(num_instances):
-                    (profile, ranking) = instances[i]
-                    exists_efx = exists_efx_rm(ranking)
-                    if not exists_efx:
-                        exists_forall = exists_rm_forall(ranking)
-                        assert exists_efx == exists_forall
-                    instances_exists[i] = int(exists_efx)
-                with open(f'{loc}/{title}.pickle', 'wb') as fo:
-                    pickle.dump(instances_exists, fo)
-                print(np.sum(instances_exists))
-
-
-def ef1_rm_experiments():
-    for phi in phis:
-        for n in ns:
-            for m in ms:
-                title = f'ef1_rm_mallows_n={n},m={m},phi={phi}'
-                print(f'working on {title}')
-                instances = load_instances(n, m, phi, num_instances)
-                instances_exists = np.zeros(num_instances)
-                for i in range(num_instances):
-                    (profile, ranking) = instances[i]
-                    exists_ef1 = exists_ef1_rm(ranking)
-                    instances_exists[i] = int(exists_ef1)
-                with open(f'{loc}/{title}.pickle', 'wb') as fo:
-                    pickle.dump(instances_exists, fo)
-                print(np.sum(instances_exists))
-
-
 def ef_rm_experiments():
-    for phi in phis:
-        for n in ns:
-            for m in ms:
-                title = f'ef_rm_mallows_n={n},m={m},phi={phi}'
-                print(f'working on {title}')
-                instances = load_instances(n, m, phi, num_instances)
-                instances_exists = np.zeros(num_instances)
-                for i in range(num_instances):
-                    (profile, ranking) = instances[i]
-                    exists_ef = exists_ef_rm(ranking)
-                    instances_exists[i] = int(exists_ef)
-                with open(f'{loc}/{title}.pickle', 'wb') as fo:
-                    pickle.dump(instances_exists, fo)
-                print(np.sum(instances_exists))
+    pool = Pool(6)
+    for prop in props:
+        for phi in phis:
+            for n in ns:
+                for m in ms:
+                    title = f'{prop.lower()}_rm_mallows_n={n},m={m},phi={phi}'
+                    print(f'working on {title}')
+                    instances = load_instances(n, m, phi, num_instances)
+                    instances = [instances[i][1] for i in range(num_instances)]
+                    results = pool.map(globals()[f'exists_{prop.lower()}_rm'], instances)
+                    instances_exists = np.zeros(num_instances)
+                    for i in range(num_instances):
+                        instances_exists[i] = int(results[i])
+                    with open(f'{loc}/{title}.pickle', 'wb') as fo:
+                        pickle.dump(instances_exists, fo)
+                    print(np.sum(instances_exists))
+
+
+def prediag(ranking, prop):
+    if not DEBUG:
+        return
+
+    print('-------------------------------------------------------------------')
+    print(f'{prop}+RM')
+    print('-------------------------------------------------------------------')
+    print('ranking\n', ranking)
+    (n, m) = np.shape(ranking)
+    print(f'top items {[np.argmin(ranking[i,:]) for i in range(n)]}')
+
+
+def postdiag(ranking, status, model, x, r, c, e, y, d):
+    if not DEBUG:
+        return
+    if not status:
+        return
+
+    print(f'status {status}, raw status {model.status}')
+
+    (n, m) = np.shape(ranking)
+    s = rmsig(ranking)
+    A = np.zeros((n, m))
+    C = np.zeros((n, m))
+    Y = np.zeros((n, n))
+    for i in range(n):
+        for j in range(m):
+            # A[i, j] = int(np.round(pulp.value(xvars[(i, j)])))
+            A[i, j] = pulp.value(x[(i, j)])
+            C[i, j] = pulp.value(c[(i, j)])
+        for k in range(n):
+            if i != k:
+                Y[i, k] = pulp.value(y[(i, k)])
+    bestranks = [int(pulp.value(r[i])) for i in range(n)]
+    print(f'best ranks {bestranks}')
+    bestranksactual = [np.min([ranking[i, j] for j in range(m) if pulp.value(x[(i,j)]) == 1]) for i in range(n)]
+    print(f'best rank actual {bestranksactual}')
+    assert(bestranks == bestranksactual)
+    print('allocation\n' , A)
+    print('cvars\n' , C)
+    print('envy\n', Y)
+    print('emptiness ', [pulp.value(e[i]) for i in range(n)])
+    print('s: ', s)
+    print('times allocated ', [np.sum([pulp.value(x[(i,j)]) for i in s[j]]) for j in range(m)])
+    print('times maximal ', [np.sum([1 for i in s[j]]) for j in range(m)])
+    for j in range(m):
+        assert(np.sum([A[i, j] for i in s[j]]) == 1)
 
 
 def rqsd_experiments():
@@ -638,6 +596,34 @@ def rqsd_experiments():
                 print(f'{title}, rm={np.sum(instances_rm)}')
                 with open(f'{loc}/{title}.pickle', 'wb') as fo:
                     pickle.dump(instances_rm, fo)
+
+
+def plot_by_phi():
+    for n in ns:
+        title = f'mallows_n={n}'
+        lms = len(ms)
+        lps = len(phis)
+        H = np.zeros((lps, lms))
+        for i in range(lps):
+            phi = phis[i]
+            for j in range(lms):
+                m = ms[j]
+                with open(f'mallows_n={n},m={m},phi={phi}.pickle', 'rb') as f:
+                    r = pickle.load(f)
+                r = np.sum(r)
+                H[i, j] = r
+        print('n =', n, '\n', H)
+
+        fig = plt.figure()
+        sns.heatmap(H, cmap='coolwarm')
+        plt.title(f'# agents = {n}')
+        plt.xlabel('# items')
+        plt.ylabel(r'$\phi$ Mallows model')
+        plt.xticks([j+0.5 for j in range(lms)], ms)
+        plt.yticks([i+0.5 for i in range(lps)], np.round(phis,1), rotation=0)
+        for im in fig.gca().get_images():
+            im.clim(vmin=np.min(H), vmax=100)
+        plt.savefig(title+'.png')
 
 
 def plot_by_ef():
@@ -693,22 +679,21 @@ def is_ef_rm():
 
 
 def main():
-    # """
+    """
     # generate instances
     for n in ns:
         for m in ms:
             for phi in phis:
                 instances = generate_instances(n, m, phi, num_instances)
+    """
     # """
-    # """
-    run experiments
-    efx_rm_experiments()
-    ef1_rm_experiments()
+    # run experiments
     ef_rm_experiments()
     # """
-    # """
+    """
     plot_by_ef()
-    # """
+    """
+    # is_ef_rm()
 
 
 if __name__ == '__main__':
