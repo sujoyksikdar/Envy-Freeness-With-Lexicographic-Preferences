@@ -346,6 +346,7 @@ def exists_ef1_rm(ranking):
     d = pulp.LpVariable.dicts('d', [(i,k,j) for i in range(n) for k in range(n) for j in range(m)],
                               lowBound=0, upBound=1, cat='Integer')
     ### d[i,k,j] = 1, if item j is allocated to agent k and agent i ranks item j above the top ranked item allocated to her
+    z = pulp.LpVariable.dicts('z', [i for i in range(n)], lowBound=0, upBound=1, cat='Integer')
 
     """
     ILP definition and objective
@@ -384,6 +385,9 @@ def exists_ef1_rm(ranking):
 
     # add constraints for an EF1 allocation
     for i in range(n):
+        model += z[i] >= (pulp.lpSum([x[(i,j)] for j in range(m)]) - 1)/m
+        model += z[i] <= pulp.lpSum([x[(i,j)] for j in range(m)])/2
+    for i in range(n):
         for k in range(n):
             if i == k:
                 continue
@@ -391,7 +395,7 @@ def exists_ef1_rm(ranking):
                 model += d[(i,k,j)] >= (r[i] - ranking[i,j]*x[(k,j)] - m*(1-x[(k,j)]))/m
                 model += d[(i,k,j)] <= (m + r[i] - ranking[i,j]*x[(k,j)] - m*(1-x[(k,j)]))/m
             model += y[(i,k)] == pulp.lpSum([d[(i,k,j)] for j in range(m)])
-            model += y[(i,k)] <= pulp.lpSum([x[(k,j)] for j in range(m)]) - 1
+            model += y[(i,k)] <= pulp.lpSum([x[(k,j)] for j in range(m)]) - z[k]
 
     """
     Solve
