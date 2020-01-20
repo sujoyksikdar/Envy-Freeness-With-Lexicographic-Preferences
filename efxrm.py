@@ -347,6 +347,7 @@ def exists_ef1_rm(ranking):
                               lowBound=0, upBound=1, cat='Integer')
     ### d[i,k,j] = 1, if item j is allocated to agent k and agent i ranks item j above the top ranked item allocated to her
     z = pulp.LpVariable.dicts('z', [i for i in range(n)], lowBound=0, upBound=1, cat='Integer')
+    ### z[i] = 1 if # items allocated to agent i > 1
 
     """
     ILP definition and objective
@@ -577,8 +578,7 @@ def postdiag(ranking, status, model, x, r, c, e, y, d):
     print('cvars\n' , C)
     print('envy\n', Y)
     print('emptiness ', [pulp.value(e[i]) for i in range(n)])
-    print('s: ', s)
-    print('times allocated ', [np.sum([pulp.value(x[(i,j)]) for i in s[j]]) for j in range(m)])
+    print('RM signature\n', s)
     print('times maximal ', [np.sum([1 for i in s[j]]) for j in range(m)])
     for j in range(m):
         assert(np.sum([A[i, j] for i in s[j]]) == 1)
