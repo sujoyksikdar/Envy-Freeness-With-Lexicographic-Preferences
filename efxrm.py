@@ -16,7 +16,7 @@ ns = [5]
 ms = list(range(5, 5*3 + 1, 1))
 num_instances = 100
 props = ['ef', 'ef1', 'efx']
-loc = 'ef_rm_experiments'
+loc = ''
 
 lns = len(ns)
 lms = len(ms)
