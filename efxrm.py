@@ -631,9 +631,9 @@ def plot_by_phi():
 
 
 def plot_by_ef():
-    colors = ['r', 'g', 'b', 'k']
-    markers = ['o','x','s','^']
-    linestyles = ['-', '--', '-.', ':']
+    colors = ['c', 'r', 'b', 'g', 'k']
+    markers = ['+', 'o','x','s','^']
+    linestyles = [':', '-.', '--', ':', '-']
     for p in props:
         print(f'{p.upper()}+RM')
         for i in range(lns):
@@ -654,7 +654,7 @@ def plot_by_ef():
             plt.xlim(0, len(ms)-5)
             plt.xlabel('Number of goods', fontdict=largefont)
             plt.xticks(range(len(ms)), ms)
-            plt.ylim(.50, 1.02)
+            #plt.ylim(., 1.02)
             plt.ylabel(f'Fraction of instances', fontdict=largefont)
             plt.grid()
             plt.legend(loc='lower right')
